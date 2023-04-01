@@ -1,6 +1,8 @@
 #include <cstdio> 
 #define N 10000000
 
+const int B = 256; // N / 256 + 1; 
+
 __global__ void vector_add(float *out, float *a, float *b, int n) {
    	//int index = threadIdx.x; 
 	//int stride = blockDim.x;  
@@ -15,7 +17,8 @@ __global__ void vector_add(float *out, float *a, float *b, int n) {
 }
 
 
-int main(){
+int main() {
+	
     float *a, *b, *out; 
 	float *d_a, *d_b, *d_out;
 
@@ -39,7 +42,7 @@ int main(){
 	//cudaMemcpy(d_out, out, sizeof(float) * N, cudaMemcpyHostToDevice);
 
     // Main function
-    vector_add<<<256,256>>>(d_out, d_a, d_b, N);
+    vector_add<<<B,256>>>(d_out, d_a, d_b, N);
 
 	cudaMemcpy(out, d_out, sizeof(float) * N, cudaMemcpyDeviceToHost);
 
