@@ -9,34 +9,46 @@ __global__ void sgemm_naive(int M, int N, int K,
 							const float *B,
 							float beta,
 							float *C) {
+	
+	// A and B are written row-wise.
 
 
-	const uint cCol = threadIdx.x / CHUNKSIZE;
-	const uint cRow =  
+	const uint innerRow = threadIdx.x / CHUNKSIZE;
+	const uint innerCol = threadIdx.x % CHUNKSIZE; 
+	
+	const int numBlockSteps = (K / CHUNKSIZE) + ((K % CHUNKSIZE) > 0); 
+	
+	const uint cRow = blockIdx.x;
+	const uint cCol = blockIdx.y; 
 
-	const uint cCol = blockIdx.x * CHUNKSIZE + (threadIdx.x / CHUNKSIZE); 
-	const uint cRow = blockIdx.y * CHUNKSIZE + (threadIdx.x % CHUNKSIZE);
+	const uint x = cRow * CHUNKSIZE + innerRow; 
+	const uint y = cCol * CHUNKSIZE + innerCol;
 		
 
-	if (cCol < M && cRow < N) {
+	if (x < M && y < N) {
 		
-		A += cRow * CHUNKSIZE * K; 
-		B += cCol * CHUNKSIZE;
-		C += cRow * CHUNKSIZE * N + cCol * CHUNKSIZE; 
+		// Jump to starting position.	
+		A += cRow * CHUNKSIZE * K; // cRow * CHUNKSIZE is actual row, * K because A is row-wise; 
+		B += cCol * CHUNKSIZE; // Jump to a correct column. 
+		C += cRow * CHUNKSIZE * N + cCol * CHUNKSIZE; // cRow * CHUNKSIZE * N moves to correct row (N is number of columns in C), cCol * CHUNKSIZE moves to correct column 
 		
 		__shared__ float As[CHUNKSIZE * CHUNKSIZE];
 		__shared__ float Bs[CHUNKSIZE * CHUNKSIZE];	
 
-		float tmp = 0.0;	
-		for (int outer = 0; outer < numBlockSteps; ++outer) {
 		
+		float tmp = 0.0; // the value 
+		for (int outer = 0; outer < numBlockSteps; ++outer) { 
+				
 			// Here we want coalescing, each thread copies one value. 	
 			As[innerCol * CHUNKSIZE + innerRow]	= A[innerCol * K + innerRow];
 			Bs[innerCol * CHUNKSIZE + innerRow]	= B[innerCol * N + innerRow];
 			
 			// Sync after copying			
 			__syncthreads(); 
-	
+			
+			A += CHUNKSIZE; 
+			B += CHUNKSIZE * N; 	
+			
 			for (int inner = 0; inner < CHUNKSIZE; ++inner) {
 				tmp += As[innerCol * CHUNKSIZE + inner] 
 					 * Bs[inner * CHUNKSIZE + innerRow];
