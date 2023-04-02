@@ -1,7 +1,7 @@
-// 2.cu
+// 3.cu
 #include <cstdio>
 #include <cstdlib>
-#define BLOCKSIZE 32
+#define CHUNKSIZE 32 
 
 __global__ void sgemm_naive(int M, int N, int K,  
 							float alpha,
@@ -10,15 +10,42 @@ __global__ void sgemm_naive(int M, int N, int K,
 							float beta,
 							float *C) {
 
-	const uint x = blockIdx.x * BLOCKSIZE + (threadIdx.x / BLOCKSIZE); 
-	const uint y = blockIdx.y * BLOCKSIZE + (threadIdx.x % BLOCKSIZE);
+
+	const uint cCol = threadIdx.x / CHUNKSIZE;
+	const uint cRow =  
+
+	const uint cCol = blockIdx.x * CHUNKSIZE + (threadIdx.x / CHUNKSIZE); 
+	const uint cRow = blockIdx.y * CHUNKSIZE + (threadIdx.x % CHUNKSIZE);
+		
+
+	if (cCol < M && cRow < N) {
+		
+		A += cRow * CHUNKSIZE * K; 
+		B += cCol * CHUNKSIZE;
+		C += cRow * CHUNKSIZE * N + cCol * CHUNKSIZE; 
+		
+		__shared__ float As[CHUNKSIZE * CHUNKSIZE];
+		__shared__ float Bs[CHUNKSIZE * CHUNKSIZE];	
+
+		float tmp = 0.0;	
+		for (int outer = 0; outer < numBlockSteps; ++outer) {
+		
+			// Here we want coalescing, each thread copies one value. 	
+			As[innerCol * CHUNKSIZE + innerRow]	= A[innerCol * K + innerRow];
+			Bs[innerCol * CHUNKSIZE + innerRow]	= B[innerCol * N + innerRow];
+			
+			// Sync after copying			
+			__syncthreads(); 
 	
-	if (x < M && y < N) {
-		float tmp = 0.0; 
-		for (int i = 0; i < K; ++i) {
-			tmp += A[x * K + i] * B[i * N + y];
+			for (int inner = 0; inner < CHUNKSIZE; ++inner) {
+				tmp += As[innerCol * CHUNKSIZE + inner] 
+					 * Bs[inner * CHUNKSIZE + innerRow];
+			}
+			
+			__syncthreads(); 
 		}
-		C[x * N + y] = alpha * tmp + beta * C[x * N + y];
+
+		C[innerCol * N + innerRow] = alpha * tmp + beta * C[innerCol * N + innerRow];
 	}
 }
 
