@@ -1,4 +1,4 @@
-// 3.cu
+// 4.cu
 #include <cstdio>
 #include <cstdlib>
 #define CHUNKSIZE 32 
