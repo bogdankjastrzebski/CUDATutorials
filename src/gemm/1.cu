@@ -1,7 +1,6 @@
-// 2.cu
+// naive.cu / 1.cu
 #include <cstdio>
 #include <cstdlib>
-#define BLOCKSIZE 32
 
 __global__ void sgemm_naive(int M, int N, int K,  
 							float alpha,
@@ -10,8 +9,8 @@ __global__ void sgemm_naive(int M, int N, int K,
 							float beta,
 							float *C) {
 
-	const uint x = blockIdx.x * BLOCKSIZE + (threadIdx.x / BLOCKSIZE); 
-	const uint y = blockIdx.y * BLOCKSIZE + (threadIdx.x % BLOCKSIZE);
+	const uint x = blockIdx.x * blockDim.x + threadIdx.x; 
+	const uint y = blockIdx.y * blockDim.y + threadIdx.y;
 	
 	if (x < M && y < N) {
 		float tmp = 0.0; 
@@ -43,22 +42,6 @@ bool check(float *array, int size, float value, float eps) {
 	return true; 
 }
 
-float min(float *array, int size) {
-	float ret = array[0]; 
-	for (int i = 1; i < size; i++) {
-		ret = ret < array[i] ? ret : array[i];
-	}
-	return ret; 
-}
-
-float max(float *array, int size) {
-	float ret = array[0]; 
-	for (int i = 1; i < size; i++) {
-		ret = ret > array[i] ? ret : array[i];
-	}
-	return ret; 
-}
-
 int main() {
 	const int M = 4096,
 			  N = 4096,
@@ -88,7 +71,7 @@ int main() {
 	cudaMemcpy(d_C, C, sizeof(float) * M * N, cudaMemcpyHostToDevice);	
 		
 	dim3 gridDim(CEIL_DIV(M, 32), CEIL_DIV(N, 32), 1);
-	dim3 blockDim(32*32);	
+	dim3 blockDim(32, 32, 1);	
 	
 	sgemm_naive<<<gridDim, blockDim>>>(M, N, K, alpha, d_A, d_B, beta, d_C);	
 	// cudaMemcpy(A, d_A, sizeof(float) * M * K, cudaMemcpyDeviceToHost); 	
@@ -97,13 +80,12 @@ int main() {
 
 	printf("C[0]: %0.4f\n", C[0]);
 	
-	if (check(C, M * N, 4096.4096f, 0.001f)) {
+	if (check(C, M * N, 4096.4096f, 0.0001f)) {
 		printf("Ok. \n");
 	} else {
 		printf("Not ok. \n");
-		printf("min: %f  max: %f", min(C, M*N), max(C, M*N)); 
 	} 
-	
+
 	printf("Done.\n");	
 
 }
