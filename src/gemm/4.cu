@@ -1,7 +1,10 @@
 // 4.cu
 #include <cstdio>
 #include <cstdlib>
-#define CHUNKSIZE 32 
+#define BN 64
+#define BM 64 
+#define BK 8
+#define TM 8
 
 __global__ void sgemm_naive(int M, int N, int K,  
 							float alpha,
@@ -13,51 +16,65 @@ __global__ void sgemm_naive(int M, int N, int K,
 	// A and B are written row-wise.
 
 
-	const uint innerRow = threadIdx.x % CHUNKSIZE;
-	const uint innerCol = threadIdx.x / CHUNKSIZE; 
+	const uint innerColA = threadIdx.x % BK;
+	const uint innerRowA = threadIdx.x / BK; 
 	
-	const int numBlockSteps = (K / CHUNKSIZE) + ((K % CHUNKSIZE) > 0); 
+	const uint innerColB = threadIdx.x % BN;
+	const uint innerRowB = threadIdx.x / BN; 
 	
-	const uint cRow = blockIdx.x;
-	const uint cCol = blockIdx.y; 
+	// const int numBlockSteps = (K / CHUNKSIZE) + ((K % CHUNKSIZE) > 0); 
+	
+	const uint cRow = blockIdx.y;
+	const uint cCol = blockIdx.x; 
+	
+	const int threadCol = threadIdx.x % BN; 
+	const int threadRow = threadIdx.x / BN;	
 
-	const uint x = cRow * CHUNKSIZE + innerRow; 
-	const uint y = cCol * CHUNKSIZE + innerCol;
+	const uint x = cRow * BM + innerRowA; 
+	const uint y = cCol * BN + innerColB;
 		
 
 	if (x < M && y < N) {
 		
 		// Jump to starting position.	
-		A += cRow * CHUNKSIZE * K; // cRow * CHUNKSIZE is actual row, * K because A is row-wise; 
-		B += cCol * CHUNKSIZE; // Jump to a correct column. 
-		C += cRow * CHUNKSIZE * N + cCol * CHUNKSIZE; // cRow * CHUNKSIZE * N moves to correct row (N is number of columns in C), cCol * CHUNKSIZE moves to correct column 
+		A += cRow * BM * K; // cRow * CHUNKSIZE is actual row, * K because A is row-wise; 
+		B += cCol * BN; // Jump to a correct column. 
+		C += cRow * BM * N + cCol * BN; // cRow * CHUNKSIZE * N moves to correct row (N is number of columns in C), cCol * CHUNKSIZE moves to correct column 
 		
-		__shared__ float As[CHUNKSIZE * CHUNKSIZE];
-		__shared__ float Bs[CHUNKSIZE * CHUNKSIZE];	
+		__shared__ float As[BM * BK];
+		__shared__ float Bs[BK * BN];	
 
-		
-		float tmp = 0.0; // the value 
-		for (int outer = 0; outer < numBlockSteps; ++outer) { 
+		float threadResults[TM] = {0.0}; // Values
+		// float tmp = 0.0; // the value 
+		for (int bkIdx = 0; bkIdx < K; bkIdx += BK) { 
 				
 			// Here we want coalescing, each thread copies one value. 	
-			As[innerCol * CHUNKSIZE + innerRow]	= A[innerCol * K + innerRow];
-			Bs[innerCol * CHUNKSIZE + innerRow]	= B[innerCol * N + innerRow];
+			As[innerRowA * BK + innerColA]	= A[innerRowA * K + innerColA];
+			Bs[innerRowB * BN + innerColB]	= B[innerRowB * N + innerColB];
 			
 			// Sync after copying			
 			__syncthreads(); 
 			
-			A += CHUNKSIZE; 
-			B += CHUNKSIZE * N; 	
+			A += BK; // CHUNKSiZE is BK  
+			B += BK * N; 	
 			
-			for (int inner = 0; inner < CHUNKSIZE; ++inner) {
-				tmp += As[innerCol * CHUNKSIZE + inner] 
-					 * Bs[inner * CHUNKSIZE + innerRow];
+			for (uint dotIdx = 0; dotIdx < BK; ++dotIdx) {
+				
+				float Btmp = Bs[dotIdx * BN + threadCol];
+				for (uint resIdx = 0; resIdx < TM; ++resIdx) {	
+					threadResults[resIdx] +=
+						As[(threadRow * TM + resIdx) * BK + dotIdx] * Btmp;	
+				}
 			}
 			
 			__syncthreads(); 
 		}
-
-		C[innerCol * N + innerRow] = alpha * tmp + beta * C[innerCol * N + innerRow];
+		
+		for (uint resIdx = 0; resIdx < TM; ++resIdx) {	
+			C[(threadRow * TM + resIdx) * N + threadCol] =
+				alpha * threadResults[resIdx] +
+				beta * C[(threadRow * TM + resIdx) * N + threadCol];
+		}
 	}
 }
 
@@ -126,8 +143,8 @@ int main() {
 	cudaMemcpy(d_B, B, sizeof(float) * K * N, cudaMemcpyHostToDevice); 	
 	cudaMemcpy(d_C, C, sizeof(float) * M * N, cudaMemcpyHostToDevice);	
 		
-	dim3 gridDim(CEIL_DIV(M, 32), CEIL_DIV(N, 32), 1);
-	dim3 blockDim(32*32);	
+	dim3 gridDim(CEIL_DIV(M, BM), CEIL_DIV(N, BN), 1);
+	dim3 blockDim(BM * BN / TM);	
 	
 	sgemm_naive<<<gridDim, blockDim>>>(M, N, K, alpha, d_A, d_B, beta, d_C);	
 	// cudaMemcpy(A, d_A, sizeof(float) * M * K, cudaMemcpyDeviceToHost); 	
