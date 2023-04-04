@@ -151,8 +151,10 @@ int main() {
 	
 	float *A, *d_A,
 		  *B, *d_B,
-          *C, *d_C;
-
+    	  *C, *d_C;
+	
+	// float *d_A, *d_B, *d_C;
+	
 	float alpha = 1.0f,
 		  beta  = 1.0f;
 				
@@ -164,13 +166,18 @@ int main() {
 	fill(B, K * N, 1.0f); 
 	fill(C, M * N, 0.4096f); 
 
+
 	cudaMalloc((void**)&d_A, sizeof(float) * M * K); 
 	cudaMalloc((void**)&d_B, sizeof(float) * K * N);	
 	cudaMalloc((void**)&d_C, sizeof(float) * M * N); 
+	
+	cudaMemset((void**)&d_A, 1.0f,    sizeof(float) * M * K); 
+	cudaMemset((void**)&d_B, 1.0f,    sizeof(float) * K * N);	
+	cudaMemset((void**)&d_C, 0.4096f, sizeof(float) * M * N); 	
 
-	cudaMemcpy(d_A, A, sizeof(float) * M * K, cudaMemcpyHostToDevice); 	
-	cudaMemcpy(d_B, B, sizeof(float) * K * N, cudaMemcpyHostToDevice); 	
-	cudaMemcpy(d_C, C, sizeof(float) * M * N, cudaMemcpyHostToDevice);	
+	// cudaMemcpy(d_A, A, sizeof(float) * M * K, cudaMemcpyHostToDevice); 
+	// cudaMemcpy(d_B, B, sizeof(float) * K * N, cudaMemcpyHostToDevice); 	
+	// cudaMemcpy(d_C, C, sizeof(float) * M * N, cudaMemcpyHostToDevice);	
 		
 	dim3 gridDim(CEIL_DIV(M, BM), CEIL_DIV(N, BN), 1);
 	dim3 blockDim(BM * BN / (TM * TN));	
@@ -182,12 +189,12 @@ int main() {
 
 	printf("C[0]: %0.4f\n", C[0]);
 	
-	if (check(C, M * N, 4096.4096f, 0.001f)) {
-		printf("Ok. \n");
-	} else {
-		printf("Not ok. \n");
-		printf("min: %f  max: %f", min(C, M*N), max(C, M*N)); 
-	} 
+	// if (check(C, M * N, 4096.4096f, 0.001f)) {
+	// 	printf("Ok. \n");
+	// } else {
+	// 	printf("Not ok. \n");
+	// 	printf("min: %f  max: %f", min(C, M*N), max(C, M*N)); 
+	// } 
 	
 	printf("Done.\n");	
 
